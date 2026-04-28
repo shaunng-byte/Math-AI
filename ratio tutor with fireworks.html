@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ratio Tutor with Fireworks</title>
+    <style>
+        :root {
+            --primary: #4a90e2;
+            --secondary: #f5a623;
+            --success: #27ae60;
+            --error: #e74c3c;
+            --bg: #f8f9fa;
+            --text: #2c3e50;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+            overflow-x: hidden;
+        }
+
+        /* Fireworks Canvas Styles */
+        #fireworksCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Allows clicking through the canvas */
+            z-index: 9999;
+        }
+
+        .container {
+            background: white;
+            max-width: 600px;
+            width: 100%;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            position: relative;
+            z-index: 1;
+        }
+
+        h1 { color: var(--primary); text-align: center; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 25px; font-size: 0.9em; }
+
+        .problem-box {
+            background: #edf2f7;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid var(--primary);
+            margin-bottom: 20px;
+            font-size: 1.1em;
+            line-height: 1.5;
+        }
+
+        .input-area {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        input[type="number"] {
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        button {
+            padding: 12px;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        button:hover { background-color: #357abd; }
+
+        .feedback {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 6px;
+            display: none;
+            font-weight: bold;
+        }
+
+        .hint-step {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+            margin-top: 10px;
+            padding: 12px;
+            border-radius: 6px;
+            animation: fadeIn 0.4s;
+        }
+
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; display: block; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; display: block; }
+
+        .progress-bar {
+            height: 8px;
+            background: #eee;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--success);
+            width: 0%;
+            transition: width 0.5s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="fireworksCanvas"></canvas>
+
+<div class="container">
+    <h1>Ratio Tutor</h1>
+    <p class="subtitle">Solve the problem below. Get it right for a surprise!</p>
+    
+    <div class="progress-bar">
+        <div id="progressFill" class="progress-fill"></div>
+    </div>
+
+    <div id="game-area">
+        <div class="problem-box" id="problemText">Loading...</div>
+
+        <div class="input-area">
+            <input type="number" id="userAnswer" placeholder="Type your answer here...">
+            <button id="checkBtn" onclick="checkAnswer()">Check Answer</button>
+            <button id="nextBtn" style="display:none; background-color: var(--success);" onclick="nextProblem()">Next Problem &rarr;</button>
+        </div>
+
+        <div id="feedback" class="feedback"></div>
+        <div id="hintArea"></div>
+    </div>
+</div>
+
+<script>
+    const problems = [
+        {
+            text: "A recipe uses a ratio of 2 cups of orange juice to 5 cups of lemonade. If you use 10 cups of orange juice, how many cups of lemonade do you need?",
+            answer: 25,
+            hints: [
+                "Find the multiplier: How many times did 2 (juice) go into 10? (10 ÷ 2 = ?)",
+                "The juice increased by 5 times. You must multiply the lemonade by the same amount.",
+                "Calculate: 5 cups of lemonade × 5. What is the total?"
+            ]
+        },
+        {
+            text: "The ratio of boys to girls in a class is 3:4. If there are 28 students in total, how many girls are there?",
+            answer: 16,
+            hints: [
+                "Total parts: 3 (boys) + 4 (girls) = 7 total parts.",
+                "Find 1 part: If 7 parts = 28 students, how much is 1 part? (28 ÷ 7 = ?)",
+                "Multiply the 4 girl parts by your answer from Step 2."
+            ]
+        },
+        {
+            text: "A map has a scale of 1:5. If a road is 20cm long on the map, how long is it in real life (in cm)?",
+            answer: 100,
+            hints: [
+                "The ratio 1:5 means every 1 unit on the map is 5 units in real life.",
+                "Since you have 20 units on the map, you need to multiply 20 by the ratio factor (5).",
+                "Calculate: 20 × 5."
+            ]
+        }
+    ];
+
+    let currentProblemIndex = 0;
+    let wrongCount = 0;
+
+    // --- Fireworks Logic ---
+    const canvas = document.getElementById('fireworksCanvas');
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    class Particle {
+        constructor(x, y, color) {
+            this.x = x;
+            this.y = y;
+            this.color = color;
+            this.radius = Math.random() * 3 + 2;
+            this.velocity = {
+                x: (Math.random() - 0.5) * 10,
+                y: (Math.random() - 0.5) * 10
+            };
+            this.alpha = 1;
+            this.friction = 0.95;
+            this.gravity = 0.1;
+        }
+
+        draw() {
+            ctx.save();
+            ctx.globalAlpha = this.alpha;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = this.color;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        update() {
+            this.velocity.x *= this.friction;
+            this.velocity.y *= this.friction;
+            this.velocity.y += this.gravity;
+            this.x += this.velocity.x;
+            this.y += this.velocity.y;
+            this.alpha -= 0.01;
+        }
+    }
+
+    function launchFireworks() {
+        const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffa500'];
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 3;
+        
+        for (let i = 0; i < 100; i++) {
+            particles.push(new Particle(centerX, centerY, colors[Math.floor(Math.random() * colors.length)]));
+        }
+        animateParticles();
+    }
+
+    function animateParticles() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        particles.forEach((particle, index) => {
+            if (particle.alpha > 0) {
+                particle.update();
+                particle.draw();
+            } else {
+                particles.splice(index, 1);
+            }
+        });
+        if (particles.length > 0) {
+            requestAnimationFrame(animateParticles);
+        }
+    }
+
+    // --- Game Logic ---
+    function loadProblem() {
+        const problem = problems[currentProblemIndex];
+        document.getElementById('problemText').innerText = problem.text;
+        document.getElementById('userAnswer').value = '';
+        document.getElementById('userAnswer').disabled = false;
+        document.getElementById('feedback').style.display = 'none';
+        document.getElementById('hintArea').innerHTML = '';
+        document.getElementById('nextBtn').style.display = 'none';
+        document.getElementById('checkBtn').style.display = 'block';
+        wrongCount = 0;
+        updateProgress();
+    }
+
+    function updateProgress() {
+        const percent = (currentProblemIndex / problems.length) * 100;
+        document.getElementById('progressFill').style.width = percent + '%';
+    }
+
+    function checkAnswer() {
+        const userVal = parseFloat(document.getElementById('userAnswer').value);
+        const problem = problems[currentProblemIndex];
+        const hintArea = document.getElementById('hintArea');
+
+        if (isNaN(userVal)) return;
+
+        if (userVal === problem.answer) {
+            showFeedback("CORRECT!", "success");
+            launchFireworks(); // FIREWORKS TRIGGER
+            document.getElementById('nextBtn').style.display = 'block';
+            document.getElementById('checkBtn').style.display = 'none';
+            document.getElementById('userAnswer').disabled = true;
+            hintArea.innerHTML = ""; 
+        } else {
+            wrongCount++;
+            showFeedback("Try again! Look at the hint below:", "error");
+            
+            if (wrongCount <= problem.hints.length) {
+                const hintNode = document.createElement('div');
+                hintNode.className = 'hint-step';
+                hintNode.innerHTML = `<strong>Hint ${wrongCount}:</strong> ${problem.hints[wrongCount-1]}`;
+                hintArea.appendChild(hintNode);
+            }
+        }
+    }
+
+    function showFeedback(text, type) {
+        const feedbackDiv = document.getElementById('feedback');
+        feedbackDiv.innerText = text;
+        feedbackDiv.className = `feedback ${type}`;
+        feedbackDiv.style.display = 'block';
+    }
+
+    function nextProblem() {
+        currentProblemIndex++;
+        if (currentProblemIndex < problems.length) {
+            loadProblem();
+        } else {
+            document.getElementById('game-area').innerHTML = `
+                <div class="problem-box" style="text-align:center; border-left:none;">
+                    <h2>🏆 Challenge Complete!</h2>
+                    <p>You are a Ratio Master.</p>
+                    <button onclick="location.reload()">Play Again</button>
+                </div>
+            `;
+            document.getElementById('progressFill').style.width = '100%';
+        }
+    }
+
+    loadProblem();
+</script>
+
+</body>
+</html>
